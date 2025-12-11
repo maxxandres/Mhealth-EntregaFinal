@@ -1,0 +1,325 @@
+<!-- frontend/index.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>MHEALTH - Reconocimiento de Actividad</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      display: flex;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .card {
+      background: #020617;
+      border-radius: 1rem;
+      padding: 1.5rem;
+      max-width: 640px;
+      width: 100%;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      font-size: 0.9rem;
+      color: #9ca3af;
+      margin-bottom: 1.5rem;
+    }
+    .upload {
+      margin-bottom: 1rem;
+    }
+    input[type="file"] {
+      margin-top: 0.5rem;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 0.6rem 1.2rem;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      background: #38bdf8;
+      color: #0f172a;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #1f2937;
+    }
+    .tag {
+      display: inline-block;
+      padding: 0.25rem 0.7rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-right: 0.4rem;
+      margin-bottom: 0.3rem;
+      background: #111827;
+    }
+    .tag-main {
+      background: #22c55e;
+      color: #022c22;
+    }
+    .tag-anomaly {
+      background: #ef4444;
+      color: #450a0a;
+    }
+    .tag-ok {
+      background: #22c55e;
+      color: #022c22;
+    }
+    .activity-image {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.activity-image img {
+  max-width: 220px;
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.5);
+  border: 1px solid #1f2937;
+}
+.activity-image-caption {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+.dist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: #111827;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.7rem;
+  margin: 0.25rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.dist-item img {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 0.4rem;
+  border: 1px solid #1f2937;
+}
+
+
+
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="card">
+      <h1>MHEALTH – Reconocimiento de Actividad</h1>
+      <p class="subtitle">
+        Sube un archivo <code>.log</code> con el formato del dataset MHEALTH.
+        El sistema predecirá la actividad predominante y si el patrón parece anómalo.
+      </p>
+
+      <div class="upload">
+        <label for="file">Archivo .log:</label><br />
+        <input id="file" type="file" accept=".log" @change="onFileChange" />
+      </div>
+
+      <button :disabled="!selectedFile || loading" @click="sendFile">
+        {{ loading ? "Procesando..." : "Enviar a /detect" }}
+      </button>
+
+      <div class="result" v-if="result">
+        <h2>Resultado</h2>
+        <p><strong>Archivo:</strong> {{ result.filename }}</p>
+        <p>
+          <strong>Actividad predominante:</strong>
+          <span class="tag tag-main">{{ result.predicted_activity_name }} (ID {{ result.predicted_activity_id }})</span>
+        </p>
+        <div class="activity-image" v-if="activityImage(result.predicted_activity_id)">
+  <img
+    :src="activityImage(result.predicted_activity_id)"
+    :alt="activityName(result.predicted_activity_id)"
+  />
+  <div class="activity-image-caption">
+    Referencia visual para: {{ activityName(result.predicted_activity_id) }}
+  </div>
+</div>
+
+        <p>
+          <strong>Anomalía:</strong>
+          <span v-if="result.is_anomaly" class="tag tag-anomaly">Sí (domina clase nula)</span>
+          <span v-else class="tag tag-ok">No</span>
+        </p>
+        <p><strong>Filas evaluadas:</strong> {{ result.rows_evaluated }}</p>
+
+            <div style="margin-top: 0.8rem;">
+            <strong>Distribución de actividades:</strong>
+            <div class="dist-container">
+            <div
+                class="dist-item"
+                v-for="(v, k) in result.activity_distribution"
+                :key="k"
+            >
+                <img :src="activityImage(k)" :alt="activityName(k)" />
+                <div>
+                <strong>{{ activityName(k) }}</strong> (ID {{ k }})  
+                – {{ (v * 100).toFixed(1) }}%
+                </div>
+            </div>
+            </div>
+
+            </div>
+
+      </div>
+
+      <div class="result" v-if="error">
+        <h2>Error</h2>
+        <p style="color:#fca5a5;">{{ error }}</p>
+      </div>
+    </div>
+  </div>
+<script>
+  const { createApp, ref } = Vue
+
+  createApp({
+    setup() {
+      const selectedFile = ref(null)
+      const loading = ref(false)
+      const result = ref(null)
+      const error = ref(null)
+
+      // Info por actividad: nombre + ruta de imagen
+      const ACTIVITY_INFO = {
+        0: {
+          label: "Null / sin actividad definida",
+          img: "img/0_null.png"
+        },
+        1: {
+          label: "De pie (standing still)",
+          img: "img/1_standing.png"
+        },
+        2: {
+          label: "Sentado y relajado",
+          img: "img/2_sitting.png"
+        },
+        3: {
+          label: "Acostado",
+          img: "img/3_lying.png"
+        },
+        4: {
+          label: "Caminando",
+          img: "img/4_walking.png"
+        },
+        5: {
+          label: "Subiendo escaleras",
+          img: "img/5_stairs.png"
+        },
+        6: {
+          label: "Flexión de cintura hacia adelante",
+          img: "img/6_waist_bend.png"
+        },
+        7: {
+          label: "Elevación frontal de brazos",
+          img: "img/7_arm_elevation.png"
+        },
+        8: {
+          label: "Flexión de rodillas (en cuclillas)",
+          img: "img/8_knees_bend.png"
+        },
+        9: {
+          label: "Ciclismo",
+          img: "img/9_cycling.png"
+        },
+        10: {
+          label: "Trote",
+          img: "img/10_jogging.png"
+        },
+        11: {
+          label: "Corriendo",
+          img: "img/11_running.png"
+        },
+        12: {
+          label: "Salto adelante y atrás",
+          img: "img/12_jump.png"
+        }
+      }
+
+      const activityName = (id) => {
+        id = Number(id)
+        return ACTIVITY_INFO[id]?.label || `Actividad desconocida`
+      }
+
+      // 👇 Aquí corregimos la ruta para que apunte a /frontend/...
+      const activityImage = (id) => {
+        id = Number(id)
+        const info = ACTIVITY_INFO[id]
+        if (!info) return ""
+        // la página está en /, pero los estáticos en /frontend
+        return `/frontend/${info.img}`
+      }
+
+      const onFileChange = (event) => {
+        const file = event.target.files[0]
+        selectedFile.value = file || null
+        result.value = null
+        error.value = null
+      }
+
+      const sendFile = async () => {
+        if (!selectedFile.value) return
+        loading.value = true
+        result.value = null
+        error.value = null
+
+        try {
+          const formData = new FormData()
+          formData.append("file", selectedFile.value)
+
+          const resp = await fetch("/detect", {
+            method: "POST",
+            body: formData
+          })
+
+          if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}))
+            throw new Error(data.detail || "Error llamando a /detect")
+          }
+
+          const data = await resp.json()
+          result.value = data
+        } catch (e) {
+          error.value = e.message
+        } finally {
+          loading.value = false
+        }
+      }
+
+      return {
+        selectedFile,
+        loading,
+        result,
+        error,
+        onFileChange,
+        sendFile,
+        activityName,
+        activityImage
+      }
+    }
+  }).mount("#app")
+</script>
+
+
+
+
+
+</body>
+</html>
