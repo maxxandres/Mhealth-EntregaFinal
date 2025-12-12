@@ -1,0 +1,16 @@
+# Ignorar modelos pesados
+backend/app/ml/*.pkl
+backend/app/ml/*.joblib
+
+# Ignorar datos originales (pesan demasiado)
+backend/data/MHEALTHDATASET/*.log
+
+# Ignorar archivos temporales
+__pycache__/
+*.pyc
+*.png
+*.tmp
+
+# Ignorar outputs de Docker
+*.tar
+*.img
