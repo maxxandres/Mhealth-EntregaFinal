@@ -1,8 +1,9 @@
 fastapi
 uvicorn[standard]
 pandas
-numpy
+numpy<2
 scikit-learn
 joblib
 python-multipart
 requests
+matplotlib==3.8.4
